@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ロード・オブ・マーチャント（仮）</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ① ヘッダー */
+        header {
+            background-color: #2c2c2c;
+            padding: 15px;
+            border-bottom: 2px solid #444;
+            font-size: 14px;
+        }
+        .status-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .gold { color: #ffd700; font-weight: bold; }
+        .danger { color: #ff4d4d; font-weight: bold; }
+
+        /* ② メインコンテンツエリア */
+        main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: none;
+        }
+        main.active { display: block; }
+        
+        h2 { font-size: 18px; margin-bottom: 15px; border-left: 4px solid #ffd700; padding-left: 8px; }
+
+        /* 【市場画面】取引リスト */
+        .item-card {
+            background-color: #2a2a2a;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        /* 対策アイテム用の特別色 */
+        .item-card.utility {
+            border: 1px dashed #007bff;
+            background-color: #1e2530;
+        }
+        .item-info { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .item-name { font-weight: bold; font-size: 16px; }
+        .item-count { font-size: 12px; color: #aaa; }
+        
+        .trade-controls { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px;
+        }
+        .price-tag { font-size: 12px; margin-bottom: 2px; }
+        .price-buy { color: #4caf50; } 
+        .price-sell { color: #ff5722; } 
+        
+        .btn-group {
+            display: flex;
+            gap: 6px;
+        }
+        .btn-group button { flex: 1; padding: 10px 4px; font-size: 13px; }
+
+        /* 汎用ボタン */
+        button {
+            background-color: #444;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:active { background-color: #666; }
+        .btn-action { background-color: #007bff; }
+        
+        /* 【地図画面】ルート選択 */
+        .map-container {
+            background-color: #222;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .current-location-box {
+            background-color: #333;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #ffd700;
+        }
+        .destination-card {
+            background-color: #2a2a2a;
+            border: 1px solid #555;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .dest-info h3 { font-size: 16px; margin-bottom: 4px; }
+        .dest-info p { font-size: 12px; color: #aaa; }
+
+        /* ③ フッター */
+        footer {
+            background-color: #2c2c2c;
+            border-top: 2px solid #444;
+            display: flex;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 15px 0;
+            background: none;
+            border: none;
+            color: #888;
+            text-align: center;
+            font-size: 14px;
+            border-radius: 0;
+        }
+        .tab-btn.active {
+            color: #ffd700;
+            border-bottom: 3px solid #ffd700;
+            background-color: #333;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="status-row">
+            <div>現在地: <span id="lbl-town">-</span></div>
+            <div>所持金: <span id="lbl-gold" class="gold">-</span> G</div>
+        </div>
+        <div class="status-row">
+            <div>日数: <span id="lbl-days">-</span> / <span id="lbl-max-days">10</span> 日</div>
+            <div>次のノルマ: <span id="lbl-norma" class="danger">1,000</span> G</div>
+        </div>
+        <div class="status-row">
+            <div>馬車積載: <span id="lbl-weight">-</span> / 30 kg</div>
+        </div>
+    </header>
+
+    <main id="view-shop" class="active">
+        <h2>市場（売買）</h2>
+        <div id="shop-list"></div>
+    </main>
+
+    <main id="view-map">
+        <h2>行商ルート（地図）</h2>
+        <div class="map-container">
+            <div class="current-location-box">
+                <small style="color: #aaa;">現在滞在中の街</small>
+                <div id="map-current-town" style="font-weight: bold; font-size: 18px; margin-top: 5px;">-</div>
+            </div>
+            
+            <p style="text-align: left; font-size: 14px; margin-bottom: 10px; color: #ffd700;">移動先を選択してください：</p>
+            <div id="destination-list"></div>
+        </div>
+    </main>
+
+    <footer>
+        <button id="tab-shop" class="tab-btn active" onclick="switchTab('shop')">市場</button>
+        <button id="tab-map" class="tab-btn" onclick="switchTab('map')">移動（地図）</button>
+        <button class="tab-btn" onclick="alert('フェーズ2で解禁！')">拠点</button>
+        <button class="tab-btn" onclick="alert('フェーズ2で解禁！')">仲間</button>
+    </footer>
+
+    <script>
+        // 1. 交易品マスター（対策アイテム2種を新規追加）
+        const ITEM_MASTER = {
+            wheat: { name: "小麦", weight: 1, type: "trade" },
+            herb:  { name: "薬草", weight: 0.5, type: "trade" },
+            iron:  { name: "鉄鉱石", weight: 2, type: "trade" },
+            sword: { name: "見習い用魔法剣", weight: 3, type: "trade" },
+            // 対策アイテム（重さは0とするか、馬車の席を圧迫する設定に）
+            incense: { name: "✨魔除けの香 (魔力嵐対策)", weight: 0.5, type: "utility" },
+            mercenary: { name: "⚔️護衛の傭兵 (オーク対策)", weight: 0, type: "utility" }
+        };
+
+        // 2. 街のマスターデータ（対策アイテムは基本どこでも買えるが、売却は不可＝0Gに）
+        const TOWN_MASTER = {
+            farm_village: {
+                name: "人間の開拓村",
+                description: "のどかな農村。小麦や薬草が豊富。",
+                market: { 
+                    wheat: { buy: 10, sell: 8 }, herb: { buy: 15, sell: 12 },
+                    iron: { buy: 40, sell: 35 }, sword: { buy: 120, sell: 100 },
+                    incense: { buy: 50, sell: 0 }, mercenary: { buy: 200, sell: 0 }
+                }
+            },
+            mine_village: {
+                name: "ドワーフの鉱山村",
+                description: "山肌に作られた不夜城。鉱石や武具の故郷。",
+                market: { 
+                    wheat: { buy: 35, sell: 30 }, herb: { buy: 25, sell: 20 },
+                    iron: { buy: 12, sell: 10 }, sword: { buy: 70, sell: 60 },
+                    incense: { buy: 50, sell: 0 }, mercenary: { buy: 200, sell: 0 }
+                }
+            },
+            beast_fort: {
+                name: "獣人の交易砦",
+                description: "大平原の要所。物資の流通量が桁違いに多い巨大市場。",
+                market: { 
+                    wheat: { buy: 50, sell: 45 }, herb: { buy: 8, sell: 5 },  
+                    iron: { buy: 60, sell: 50 }, sword: { buy: 160, sell: 140 },
+                    incense: { buy: 80, sell: 0 }, mercenary: { buy: 300, sell: 0 } // 砦では少し物価高
+                }
+            }
+        };
+
+        let playerState = {
+            gold: 500,
+            currentTown: "farm_village",
+            days: 1,
+            round: 1, 
+            inventory: { wheat: 0, herb: 0, iron: 0, sword: 0, incense: 0, mercenary: 0 }
+        };
+
+        const MAX_WEIGHT = 30; 
+
+        function getRoundSettings() {
+            if (playerState.round === 1) {
+                return { maxDays: 10, norma: 1000, allowedTowns: ["farm_village", "mine_village"] };
+            } else {
+                return { maxDays: 20, norma: 5000, allowedTowns: ["farm_village", "mine_village", "beast_fort"] };
+            }
+        }
+
+        function switchTab(tabName) {
+            document.getElementById("view-shop").classList.remove("active");
+            document.getElementById("view-map").classList.remove("active");
+            document.getElementById("tab-shop").classList.remove("active");
+            document.getElementById("tab-map").classList.remove("active");
+
+            if (tabName === 'shop') {
+                document.getElementById("view-shop").classList.add("active");
+                document.getElementById("tab-shop").classList.add("active");
+            } else if (tabName === 'map') {
+                document.getElementById("view-map").classList.add("active");
+                document.getElementById("tab-map").classList.add("active");
+            }
+            updateUI();
+        }
+
+        function calcCurrentWeight() {
+            let total = 0;
+            for (let id in playerState.inventory) {
+                total += playerState.inventory[id] * ITEM_MASTER[id].weight;
+            }
+            return total;
+        }
+
+        function updateUI() {
+            const currentTownData = TOWN_MASTER[playerState.currentTown];
+            const settings = getRoundSettings();
+            
+            document.getElementById("lbl-town").innerText = currentTownData.name;
+            document.getElementById("lbl-gold").innerText = playerState.gold;
+            document.getElementById("lbl-days").innerText = playerState.days;
+            document.getElementById("lbl-max-days").innerText = settings.maxDays;
+            document.getElementById("lbl-norma").innerText = settings.norma;
+            document.getElementById("lbl-weight").innerText = calcCurrentWeight();
+
+            // --- 市場画面（売買リスト）の生成 ---
+            let shopHtml = "";
+            for (let id in ITEM_MASTER) {
+                let item = ITEM_MASTER[id];
+                let price = currentTownData.market[id];
+                let count = playerState.inventory[id];
+                let isUtility = item.type === "utility";
+                
+                shopHtml += `
+                    <div class="item-card ${isUtility ? 'utility' : ''}">
+                        <div class="item-info">
+                            <span class="item-name">${item.name} <small>(${item.weight}kg)</small></span>
+                            <span class="item-count">所持数: ${count}</span>
+                        </div>
+                        <div class="trade-controls">
+                            <div class="price-tag">
+                                雇用/買値: <span class="price-buy">${price.buy}G</span> 
+                                ${isUtility ? '' : `/ 売値: <span class="price-sell">${price.sell}G</span>`}
+                            </div>
+                            <div class="btn-group">
+                                <button onclick="buyItem('${id}')">1個買う</button>
+                                <button onclick="buyMax('${id}')" style="background-color: #2e7d32;">買えるだけ</button>
+                            </div>
+                            ${isUtility ? '' : `
+                            <div class="btn-group">
+                                <button onclick="sellItem('${id}')" style="background-color:#555;">1個売る</button>
+                                <button onclick="sellAll('${id}')" style="background-color:#c62828;">全部売る</button>
+                            </div>
+                            `}
+                        </div>
+                    </div>
+                `;
+            }
+            document.getElementById("shop-list").innerHTML = shopHtml;
+
+            // --- 地図画面の生成 ---
+            document.getElementById("map-current-town").innerText = currentTownData.name;
+            let mapHtml = "";
+            for (let id in TOWN_MASTER) {
+                if (id !== playerState.currentTown && settings.allowedTowns.includes(id)) {
+                    let dest = TOWN_MASTER[id];
+                    mapHtml += `
+                        <div class="destination-card">
+                            <div class="dest-info">
+                                <h3>${dest.name}</h3>
+                                <p>${dest.description}</p>
+                                <p style="color: #007bff; margin-top:3px;">移動日数: 1日</p>
+                            </div>
+                            <button class="btn-action" onclick="travelTo('${id}')">出発する</button>
+                        </div>
+                    `;
+                }
+            }
+            document.getElementById("destination-list").innerHTML = mapHtml;
+
+            // ノルマ判定
+            if (playerState.days > settings.maxDays) {
+                if (playerState.gold >= settings.norma) {
+                    if (playerState.round === 1) {
+                        alert("【第1回ノルマ達成！】新エリア『獣人の交易砦』解放！");
+                        playerState.round = 2;
+                        updateUI();
+                    } else if (playerState.round === 2) {
+                        alert("【第2回ノルマ達成！】借金完済！\n\n【フェーズ1 クリア！】");
+                        playerState.round = 1; playerState.days = 1; playerState.gold = 500;
+                        playerState.inventory = { wheat: 0, herb: 0, iron: 0, sword: 0, incense: 0, mercenary: 0 };
+                        switchTab('shop');
+                    }
+                } else {
+                    alert(`【ゲームオーバー】期限までに ${settings.norma}G 貯まりませんでした…`);
+                    playerState.round = 1; playerState.days = 1; playerState.gold = 500;
+                    playerState.inventory = { wheat: 0, herb: 0, iron: 0, sword: 0, incense: 0, mercenary: 0 };
+                    switchTab('shop');
+                }
+            }
+        }
+
+        // 売買処理
+        function buyItem(id) {
+            let town = TOWN_MASTER[playerState.currentTown];
+            let price = town.market[id].buy;
+            let weight = ITEM_MASTER[id].weight;
+            if (playerState.gold < price) { alert("ゴールドが足りません"); return; }
+            if (calcCurrentWeight() + weight > MAX_WEIGHT) { alert("馬車が一杯です！"); return; }
+            playerState.gold -= price;
+            playerState.inventory[id]++;
+            updateUI();
+        }
+
+        function buyMax(id) {
+            let town = TOWN_MASTER[playerState.currentTown];
+            let price = town.market[id].buy;
+            let weight = ITEM_MASTER[id].weight;
+            let maxByGold = Math.floor(playerState.gold / price);
+            let remainingWeight = MAX_WEIGHT - calcCurrentWeight();
+            // 重さ0のアイテム（傭兵）は無限に買えないよう、お金の上限のみにする
+            let maxByWeight = weight > 0 ? Math.floor(remainingWeight / weight) : maxByGold;
+            let finalBuyCount = Math.min(maxByGold, maxByWeight);
+
+            if (finalBuyCount <= 0) { alert("購入できません"); return; }
+            playerState.gold -= price * finalBuyCount;
+            playerState.inventory[id] += finalBuyCount;
+            updateUI();
+        }
+
+        function sellItem(id) {
+            let town = TOWN_MASTER[playerState.currentTown];
+            let price = town.market[id].sell;
+            if (playerState.inventory[id] > 0) {
+                playerState.gold += price;
+                playerState.inventory[id]--;
+                updateUI();
+            }
+        }
+
+        function sellAll(id) {
+            let town = TOWN_MASTER[playerState.currentTown];
+            let price = town.market[id].sell;
+            let count = playerState.inventory[id];
+            if (count <= 0) return;
+            playerState.gold += price * count;
+            playerState.inventory[id] = 0;
+            updateUI();
+        }
+
+        // 地図画面からの移動処理（⭐対策アイテムの判定を追加）
+        function travelTo(destId) {
+            playerState.days++;
+            
+            let rand = Math.random();
+            if (rand < 0.15) {
+                // 【イベント①：魔力嵐】
+                if (playerState.inventory.incense > 0) {
+                    playerState.inventory.incense--; // 対策アイテム消費
+                    alert("【✨魔力嵐を無効化！】\n街道が激しい魔力嵐に包まれたが、事前に購入していた『魔除けの香』が身代わりとなって霧散した！荷物は無事だ！");
+                } else {
+                    alert("【⚠️イベント発生：魔力嵐】\n激しい魔力嵐が直撃！荷物の小麦と薬草が1つずつ破損した…（魔除けの香があれば防げました）");
+                    if (playerState.inventory.wheat > 0) playerState.inventory.wheat--;
+                    if (playerState.inventory.herb > 0) playerState.inventory.herb--;
+                }
+            } else if (rand < 0.30) {
+                // 【イベント②：オークの襲撃】
+                if (playerState.inventory.mercenary > 0) {
+                    playerState.inventory.mercenary--; // 傭兵の消費
+                    alert("【⚔️オークの盗賊団を撃退！】\nオークの襲撃を受けたが、雇っていた『護衛の傭兵』が鮮やかに撃退してくれた！傭兵は満足して契約を終えた。");
+                } else {
+                    alert("【⚠️イベント発生：オークの襲撃】\nオークの盗賊団に囲まれた！命の安全のためにワイロを支払った…（150Gを喪失。護衛の傭兵がいれば防げました）");
+                    playerState.gold = Math.max(0, playerState.gold - 150);
+                }
+            }
+
+            playerState.currentTown = destId;
+            alert(`${TOWN_MASTER[destId].name} に到着しました！`);
+            switchTab('shop');
+        }
+
+        updateUI();
+    </script>
+</body>
+</html>
